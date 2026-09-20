@@ -141,6 +141,41 @@ describe("prepareOpenCodeRuntimeConfig", () => {
     await prepared.cleanup();
   });
 
+  // Guards the documented Hicap setup in doc/connections/HICAP.md: an OpenAI-compatible
+  // endpoint that authenticates with an `api-key` header instead of a bearer apiKey.
+  it("expands {env:VAR} placeholders inside nested provider headers", async () => {
+    const configHome = await makeConfigHome({ permission: { read: "allow" } });
+    const providers = {
+      hicap: {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Hicap",
+        options: {
+          baseURL: "https://api.hicap.ai/v1",
+          headers: { "api-key": "{env:HICAP_API_KEY}" },
+        },
+        models: { "hicap-default": {} },
+      },
+    };
+    const prepared = await prepareOpenCodeRuntimeConfig({
+      env: {
+        XDG_CONFIG_HOME: configHome,
+        PAPERCLIP_OPENCODE_PROVIDERS: JSON.stringify(providers),
+        HICAP_API_KEY: "hc-test-key",
+      },
+      config: {},
+    });
+    cleanupPaths.add(prepared.env.XDG_CONFIG_HOME);
+    const runtimeConfig = JSON.parse(
+      await fs.readFile(path.join(prepared.env.XDG_CONFIG_HOME, "opencode", "opencode.json"), "utf8"),
+    ) as {
+      provider: { hicap: { options: { baseURL: string; headers: Record<string, string> }; models: Record<string, unknown> } };
+    };
+    expect(runtimeConfig.provider.hicap.options.headers["api-key"]).toBe("hc-test-key");
+    expect(runtimeConfig.provider.hicap.options.baseURL).toBe("https://api.hicap.ai/v1");
+    expect(runtimeConfig.provider.hicap.models).toHaveProperty("hicap-default");
+    await prepared.cleanup();
+  });
+
   it("leaves an unresolvable {env:VAR} placeholder intact", async () => {
     const configHome = await makeConfigHome({ permission: { read: "allow" } });
     const providers = { bifrost: { options: { apiKey: "{env:DEFINITELY_UNSET_VAR_XYZ}" }, models: { "x/y": {} } } };
